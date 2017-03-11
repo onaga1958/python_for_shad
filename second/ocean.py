@@ -23,23 +23,23 @@ class Creature:
                     isinstance(cell.newcomer, Creature))
 
     def move(self, neighbors):
-        potential_locations = [cell for cell in neighbors 
+        potential_locations = [cell for cell in neighbors
                                if self.possible_neighbor(cell)]
         shuffle(potential_locations)
         p = self.speed[len(potential_locations)]
- 
+
         for location in potential_locations:
             if bernoulli.rvs(p):
                 return location
         return None
 
     def reproduction(self, neighbors):
-        potential_locations = [cell for cell in neighbors 
+        potential_locations = [cell for cell in neighbors
                                if (cell.creature is None and
                                    cell.newcomer is None)]
         shuffle(potential_locations)
         p = self.reprodaction_rate[len(potential_locations)]
- 
+
         for location in potential_locations:
             if bernoulli.rvs(p):
                 return [self.child(), location]
@@ -57,14 +57,14 @@ class Predator(Creature):
         self.max_stamina = stamina
 
     def child(self):
-        child = Predator(self.speed, self.reprodaction_rate, self.max_stamina) 
+        child = Predator(self.speed, self.reprodaction_rate, self.max_stamina)
         child.stamina += 1
         return child
 
     def possible_neighbor(self, cell):
         return not (isinstance(cell.creature, Predator) or
                     isinstance(cell.newcomer, Predator))
-        
+ 
 
 def get_creature(creature_index, params):
     if creature_index == 0:
@@ -77,6 +77,7 @@ def get_creature(creature_index, params):
         return Obstacle()
 
     raise UnexpectedCreatureIndex()
+
 
 def creature_index(creature):
     if creature is None:
@@ -92,13 +93,15 @@ def creature_index(creature):
 def probability_array(p_0):
     return [0] + [probability(p_0, n) for n in range(1, 5)]
 
+
 def probability(p_0, n):
     """
     There are n locations. Want to move/reproduce with probability p_0.
-    
+ 
     This function calculates required probabily of action in one location.
     """
     return 1 - (1 - p_0)**(1 / n)
+
 
 class Ocean:
     class Cell:
@@ -119,7 +122,8 @@ class Ocean:
                     new_cell.newcomer = self.creature
                     self.creature = None
                 else:
-                    new_creature, new_cell = self.creature.reproduction(self.neighbors)
+                    arr = self.creature.reproduction(self.neighbors) 
+                    new_creature, new_cell = arr
                     if new_creature is not None:
                         new_cell.newcomer = new_creature
 
@@ -138,7 +142,6 @@ class Ocean:
                 self.creature.stamina -= 1
                 if self.creature.stamina == 0:
                     self.creature = None
-                    
 
     def __init__(self, start_table, params):
         """
@@ -155,7 +158,7 @@ class Ocean:
         for start_line, line in zip(start_table, self.table):
             for creature_index, cell in zip(start_line, line):
                 cell.creature = get_creature(creature_index, self.params)
-                        
+
         for i in range(y_lim):
             for j in range(x_lim):
                 potential_neighbors = [self.table[(i + 1) % y_lim][j],
@@ -213,7 +216,6 @@ class Ocean:
             return [predators_cnt, victims_cnt]
         else:
             return True
-
 
     def __str__(self):
         result = ""
