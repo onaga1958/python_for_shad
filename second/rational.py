@@ -1,5 +1,6 @@
 import sys
 
+
 class Rational:
     def GCD(self):
         a = self.denominator
@@ -22,8 +23,8 @@ class Rational:
         self.GCD()
 
     def __add__(self, another):
-        return Rational(self.numerator*another.denominator
-                        + self.denominator*another.numerator,
+        return Rational(self.numerator*another.denominator +
+                        self.denominator*another.numerator,
                         self.denominator*another.denominator)
 
     def __mul__(self, another):
@@ -31,8 +32,8 @@ class Rational:
                         self.denominator * another.denominator)
 
     def __sub__(self, another):
-        return Rational(self.numerator*another.denominator
-                        - self.denominator*another.numerator,
+        return Rational(self.numerator*another.denominator -
+                        self.denominator*another.numerator,
                         self.denominator * another.denominator)
 
     def __truediv__(self, another):
