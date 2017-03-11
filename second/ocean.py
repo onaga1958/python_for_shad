@@ -64,7 +64,7 @@ class Predator(Creature):
     def possible_neighbor(self, cell):
         return not (isinstance(cell.creature, Predator) or
                     isinstance(cell.newcomer, Predator))
- 
+
 
 def get_creature(creature_index, params):
     if creature_index == 0:
@@ -97,7 +97,7 @@ def probability_array(p_0):
 def probability(p_0, n):
     """
     There are n locations. Want to move/reproduce with probability p_0.
- 
+
     This function calculates required probabily of action in one location.
     """
     return 1 - (1 - p_0)**(1 / n)
@@ -122,7 +122,7 @@ class Ocean:
                     new_cell.newcomer = self.creature
                     self.creature = None
                 else:
-                    arr = self.creature.reproduction(self.neighbors) 
+                    arr = self.creature.reproduction(self.neighbors)
                     new_creature, new_cell = arr
                     if new_creature is not None:
                         new_cell.newcomer = new_creature
