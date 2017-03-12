@@ -11,20 +11,13 @@ class UnexpectedCreatureIndex(OceanException):
 
 
 class Creature:
-    def __init__(self, speed, reprodaction_rate):
+    def __init__(self, speed):
         self.speed = speed
-        self.reprodaction_rate = reprodaction_rate
-
-    def child(self):
-        return Creature(self.speed, self.reprodaction_rate)
-
-    def possible_neighbor(self, cell):
-        return not (isinstance(cell.creature, Creature) or
-                    isinstance(cell.newcomer, Creature))
 
     def move(self, neighbors):
         potential_locations = [cell for cell in neighbors
-                               if self.possible_neighbor(cell)]
+                               if cell.creature is None and
+                               cell.newcomer is None]
         shuffle(potential_locations)
         p = self.speed[len(potential_locations)]
 
@@ -35,15 +28,16 @@ class Creature:
 
     def reproduction(self, neighbors):
         potential_locations = [cell for cell in neighbors
-                               if (cell.creature is None and
-                                   cell.newcomer is None)]
-        shuffle(potential_locations)
-        p = self.reprodaction_rate[len(potential_locations)]
+                               if cell.creature is None and
+                               cell.newcomer is None]
+        if len(potential_locations) > 0:
+            shuffle(potential_locations)
+            potential_locations[0].newcomer = self.child()
 
-        for location in potential_locations:
-            if bernoulli.rvs(p):
-                return [self.child(), location]
-        return [None, None]
+
+class Victim(Creature):
+    def child(self):
+        return Victim(self.speed)
 
 
 class Obstacle:
@@ -51,19 +45,37 @@ class Obstacle:
 
 
 class Predator(Creature):
-    def __init__(self, speed, reprodaction_rate, stamina):
-        super(Predator, self).__init__(speed, reprodaction_rate)
+    def __init__(self, speed, eat_rate, stamina):
+        super(Predator, self).__init__(speed)
         self.stamina = stamina
         self.max_stamina = stamina
+        self.eat_rate = eat_rate
 
     def child(self):
-        child = Predator(self.speed, self.reprodaction_rate, self.max_stamina)
+        child = Predator(self.speed, self.eat_rate, self.max_stamina)
         child.stamina += 1
         return child
 
-    def possible_neighbor(self, cell):
-        return not (isinstance(cell.creature, Predator) or
-                    isinstance(cell.newcomer, Predator))
+    def eat(self, neighbors):
+        potential_targets = [cell for cell in neighbors
+                              if has_simple_creature(cell)] 
+        shuffle(potential_targets)
+        p = self.eat_rate[len(potential_targets)]
+
+        for cell in potential_targets:
+            if bernoulli.rvs(p):
+                if cell.creature is None:
+                    cell.newcomer = None
+                else:
+                    cell.creature = None
+                self.stamina = self.max_stamina + 1
+                return True
+        return False
+
+
+def has_simple_creature(cell):
+    return (isinstance(cell.creature, Victim) or
+            isinstance(cell.newcomer, Victim))
 
 
 def get_creature(creature_index, params):
@@ -72,7 +84,7 @@ def get_creature(creature_index, params):
     if creature_index == 1:
         return Predator(params[0], params[2], params[4])
     if creature_index == 2:
-        return Creature(params[1], params[3])
+        return Victim(params[1])
     if creature_index == 3:
         return Obstacle()
 
@@ -84,9 +96,8 @@ def creature_index(creature):
         return 0
     if isinstance(creature, Predator):
         return 1
-    else:
-        if isinstance(creature, Creature):
-            return 2
+    if isinstance(creature, Victim):
+        return 2
     return 3
 
 
@@ -110,46 +121,39 @@ class Ocean:
 
         def start_turn(self):
             """
-            Creature can do only one action at one turn: move or reproduce.
+            Creature can do only one action at one turn: eat or move.
 
-            Firstly he tries to move. If didn't succeed - tries to reproduce.
+            Only Predators can eat, of course.
+
+            Firstly he tries to eat. If didn't succeed - tries to move.
             """
             if self.creature is not None:
+                if isinstance(self.creature, Predator):
+                    if self.creature.eat(self.neighbors):
+                        return None
+
                 new_cell = self.creature.move(self.neighbors)
                 if new_cell is not None:
-                    if isinstance(new_cell.newcomer, Creature):
-                        self.creature.stamina = self.creature.max_stamina + 1
                     new_cell.newcomer = self.creature
                     self.creature = None
-                else:
-                    arr = self.creature.reproduction(self.neighbors)
-                    new_creature, new_cell = arr
-                    if new_creature is not None:
-                        new_cell.newcomer = new_creature
 
         def end_turn(self):
-            # newcomer and creature can be both noNone only in one case:
-            # if newcomer is a Predator and creature is a simple Creature
-            if isinstance(self.newcomer, Predator):
-                if isinstance(self.creature, Creature):
-                    self.newcomer.stamina = self.newcomer.max_stamina + 1
-
-            if isinstance(self.newcomer, Creature):
-                self.creature = self.newcomer
-                self.newcomer = None
-
             if isinstance(self.creature, Predator):
                 self.creature.stamina -= 1
                 if self.creature.stamina == 0:
                     self.creature = None
 
+
     def __init__(self, start_table, params):
         """
-        params: predator_speed, victim_speed, predator_reprodaction_rate,
+        params: predator_speed, victim_speed, eat_rate,
 
-        victim_reprodaction_rate, predator_stamina
+        predator_reproduction_period, victim_reproduction_period,
+ 
+        predator_stamina
         """
-        self.params = list(map(probability_array, params[:-1])) + [params[-1]]
+        self.params = list(map(probability_array, params[:3])) + params[3:]
+        self.turns_till_reproduction = params[-3:-1]
         x_lim = len(start_table[0])
         y_lim = len(start_table)
         self.table = [[Ocean.Cell() for i in range(x_lim)]
@@ -169,6 +173,13 @@ class Ocean:
                 for potential_neighbor in potential_neighbors:
                     if not isinstance(potential_neighbor.creature, Obstacle):
                         self.table[i][j].neighbors.append(potential_neighbor)
+    
+    def end_phase(self):
+        for line in self.table:
+            for cell in line:
+                if cell.newcomer is not None:
+                    cell.creature = cell.newcomer
+                    cell.newcomer = None
 
     def make_turn(self):
         """
@@ -180,12 +191,25 @@ class Ocean:
             for cell in line:
                 if not isinstance(cell.creature, Obstacle):
                     cell.start_turn()
+        self.end_phase()
+
+        params = self.params[-3:-1]
+        creature_type = [Predator, Victim]
+        for i in range(len(self.turns_till_reproduction)):
+            self.turns_till_reproduction[i] -= 1
+            if self.turns_till_reproduction[i] == 0:
+                self.turns_till_reproduction[i] = params[i]
+                for line in self.table:
+                    for cell in line:
+                        if isinstance(cell.creature, creature_type[i]):
+                            cell.creature.reproduction(cell.neighbors)
+                self.end_phase()
 
         for line in self.table:
             for cell in line:
                 if not isinstance(cell.creature, Obstacle):
                     cell.end_turn()
-
+        
         if self.creatures_counter():
             return True
 
@@ -229,7 +253,7 @@ class Ocean:
 def init_ocean(file_name):
     with open(file_name) as param_file:
         params = param_file.readline().strip().split()
-        params = list(map(float, params[:-1])) + [int(params[-1])]
+        params = list(map(float, params[:-3])) + list(map(int, params[-3:]))
         table = [list(map(int, line.strip().split())) for line in param_file]
 
     ocean = Ocean(table, params)
@@ -237,7 +261,7 @@ def init_ocean(file_name):
 
 if __name__ == '__main__':
     ocean = init_ocean("ocean_params.txt")
-    for i in range(5):
+    for i in range(12):
         print(ocean)
         if ocean.make_turn():
             break
