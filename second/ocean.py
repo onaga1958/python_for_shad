@@ -1,5 +1,4 @@
-from scipy.stats import bernoulli
-from random import shuffle
+import random
 
 
 class OceanException(BaseException):
@@ -18,11 +17,11 @@ class Creature:
         potential_locations = [cell for cell in neighbors
                                if cell.creature is None and
                                cell.newcomer is None]
-        shuffle(potential_locations)
-        p = self.speed[len(potential_locations)]
+        random.shuffle(potential_locations)
+        probability = self.speed[len(potential_locations)]
 
         for location in potential_locations:
-            if bernoulli.rvs(p):
+            if bernoulli_rvs(probability):
                 return location
         return None
 
@@ -31,8 +30,7 @@ class Creature:
                                if cell.creature is None and
                                cell.newcomer is None]
         if len(potential_locations) > 0:
-            shuffle(potential_locations)
-            potential_locations[0].newcomer = self.child()
+            random.choice(potential_locations).newcomer = self.child()
 
 
 class Victim(Creature):
@@ -59,11 +57,11 @@ class Predator(Creature):
     def eat(self, neighbors):
         potential_targets = [cell for cell in neighbors
                              if has_simple_creature(cell)]
-        shuffle(potential_targets)
-        p = self.eat_rate[len(potential_targets)]
+        random.shuffle(potential_targets)
+        probability = self.eat_rate[len(potential_targets)]
 
         for cell in potential_targets:
-            if bernoulli.rvs(p):
+            if bernoulli_rvs(probability):
                 if cell.creature is None:
                     cell.newcomer = None
                 else:
@@ -112,6 +110,9 @@ def probability(p_0, n):
     This function calculates required probabily of action in one location.
     """
     return 1 - (1 - p_0)**(1 / n)
+
+def bernoulli_rvs(p):
+    return True if random.random() < p else False
 
 
 class Ocean:
@@ -259,8 +260,10 @@ def init_ocean(file_name):
     return ocean
 
 if __name__ == '__main__':
-    ocean = init_ocean("ocean_params.txt")
-    for i in range(12):
+    params = [0.7, 0.5, 0.6, 8, 5, 6]
+    table = [[0, 0, 1, 0], [2, 0, 0, 3], [2, 3, 0, 1], [3, 2, 0, 0]]
+    ocean = Ocean(table, params)
+    for i in range(20):
         print(ocean)
         if ocean.make_turn():
             break
