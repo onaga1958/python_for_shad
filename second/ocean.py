@@ -58,7 +58,7 @@ class Predator(Creature):
 
     def eat(self, neighbors):
         potential_targets = [cell for cell in neighbors
-                              if has_simple_creature(cell)] 
+                             if has_simple_creature(cell)]
         shuffle(potential_targets)
         p = self.eat_rate[len(potential_targets)]
 
@@ -143,13 +143,12 @@ class Ocean:
                 if self.creature.stamina == 0:
                     self.creature = None
 
-
     def __init__(self, start_table, params):
         """
         params: predator_speed, victim_speed, eat_rate,
 
         predator_reproduction_period, victim_reproduction_period,
- 
+
         predator_stamina
         """
         self.params = list(map(probability_array, params[:3])) + params[3:]
@@ -173,7 +172,7 @@ class Ocean:
                 for potential_neighbor in potential_neighbors:
                     if not isinstance(potential_neighbor.creature, Obstacle):
                         self.table[i][j].neighbors.append(potential_neighbor)
-    
+
     def end_phase(self):
         for line in self.table:
             for cell in line:
@@ -209,7 +208,7 @@ class Ocean:
             for cell in line:
                 if not isinstance(cell.creature, Obstacle):
                     cell.end_turn()
-        
+
         if self.creatures_counter():
             return True
 
