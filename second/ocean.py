@@ -111,6 +111,7 @@ def probability(p_0, n):
     """
     return 1 - (1 - p_0)**(1 / n)
 
+
 def bernoulli_rvs(p):
     return True if random.random() < p else False
 
