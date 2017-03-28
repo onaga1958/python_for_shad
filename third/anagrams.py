@@ -1,29 +1,38 @@
+def get_letters_dict(word):
+    d = {}
+    for ch in word:
+        if d.get(ch) is None:
+            d[ch] = 1
+        else:
+            d[ch] += 1
+    return d
+
+
+def check_anagram(word1, word2):
+    dict1 = get_letters_dict(word1)
+    dict2 = get_letters_dict(word2)
+    return dict1 == dict2
+
 number = int(input())
 
-letters_set_variaty = {}
+anagrams = []
 
 for i in range(number):
     string = input().lower()
-    letter_dict = {}
-    for ch in string:
-        if letter_dict.get(ch) is None:
-            letter_dict[ch] = 1
-        else:
-            letter_dict[ch] += 1
-    fs = frozenset(letter_dict.items())
-    if letters_set_variaty.get(fs) is None:
-        letters_set_variaty[fs] = [string]
+    for anagram in anagrams:
+        if check_anagram(string, anagram[0]):
+            anagram.append(string)
+            break
     else:
-        letters_set_variaty[fs].append(string)
+        anagrams.append([string])
 
 result_strings = []
-
-for anagrams in letters_set_variaty.values():
-    if len(anagrams) > 1:
-        new_s = ""
-        for i, word in enumerate(sorted(anagrams)):
-            new_s += word + (" " if i != len(anagrams) - 1 else "") 
-        result_strings.append(new_s)
+for anagram in anagrams:
+    if len(anagram) > 1:
+        s = ""
+        for i, word in enumerate(sorted(anagram)):
+            s += word + (" " if i < len(anagram) - 1 else "")
+        result_strings.append(s)
 
 for s in sorted(result_strings):
     print(s)
