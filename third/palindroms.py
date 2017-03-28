@@ -13,6 +13,7 @@ def print_result(string):
             print('no')
             return
 
+
 def comp_char(c1, c2):
     if c1 != 'е' and c1 != 'ё':
         return c1 != c2
