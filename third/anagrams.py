@@ -1,23 +1,20 @@
-from collections import Counter
+word_number = int(input())
 
-number = int(input())
+anagrams = {}
 
-anagrams = set()
-dict_anagram = {}
-
-for i in range(number):
+for i in range(word_number):
     string = input().lower()
-    for anagram in anagrams:
-        if Counter(string) == Counter(anagram):
-            dict_anagram[anagram].append(string)
-            break
+    key = "".join(sorted(string))
+    if anagrams.get(key) is None:
+        anagrams[key] = {string}
     else:
-        anagrams.add(string)
-        dict_anagram[string] = [string]
+        anagrams[key].add(string)
 
-for example in sorted(anagrams):
-    anagram_list = sorted(dict_anagram[example])
-    if len(anagram_list) > 1:
-        for i, word in enumerate(anagram_list):
-            print(word, end=' ' if i < len(anagram_list) else "")
-        print()
+result_strings = []
+
+for it in anagrams.values():
+    if len(it) > 1:
+        result_strings.append(" ".join(sorted(it)))
+
+for s in sorted(result_strings):
+    print(s)
