@@ -1,0 +1,6 @@
+en abcdefghijklmnopqrstuvwxyz
+ru абвгдеёжзиклмнопрстуфхцчшщъыьэюя
+
+привет мир
+привет мир на Python
+abcйуцкен xyzфывапр
