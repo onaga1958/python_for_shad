@@ -1,0 +1,7 @@
+import sys
+import math
+from os import path
+
+def f(a):
+    if a == 0:
+        import re
