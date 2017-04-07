@@ -106,7 +106,6 @@ def probability_array(p_0):
 def probability(p_0, n):
     """
     There are n locations. Want to move/reproduce with probability p_0.
-
     This function calculates required probabily of action in one location.
     """
     return 1 - (1 - p_0)**(1 / n)
@@ -124,9 +123,7 @@ class Ocean:
         def start_turn(self):
             """
             Creature can do only one action at one turn: eat or move.
-
             Only Predators can eat, of course.
-
             Firstly he tries to eat. If didn't succeed - tries to move.
             """
             if self.creature is not None:
@@ -148,9 +145,7 @@ class Ocean:
     def __init__(self, start_table, params):
         """
         params: predator_speed, victim_speed, eat_rate,
-
         predator_reproduction_period, victim_reproduction_period,
-
         predator_stamina
         """
         self.params = list(map(probability_array, params[:3])) + params[3:]
@@ -185,7 +180,6 @@ class Ocean:
     def make_turn(self):
         """
         Returns True is there are no victims or there are no predators
-
         in the ocean. If there are both types in the ocean returns None.
         """
         for line in self.table:
@@ -217,13 +211,9 @@ class Ocean:
     def creatures_counter(self, needstat=False):
         """
         If needstat is False this function checks do the ocean has both
-
         victims and predators. If not returns True, otherwise returns
-
         False.
-
         If needstat is True this function returns number of predators
-
         and victims in the ocean.
         """
         predators_cnt = 0
@@ -268,4 +258,4 @@ if __name__ == '__main__':
         print(ocean)
         if ocean.make_turn():
             break
-    print(ocean)
+print(ocean)
