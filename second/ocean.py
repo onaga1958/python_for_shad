@@ -1,19 +1,42 @@
 import random
 
 
+creature_marks = {'None': '.', 'Victim': 'v', 'Predator': 'p', 'Obstacle': 'X'}
+
+
 class OceanException(BaseException):
-    pass
+    def __str__(self):
+        return self.descr
 
 
-class UnexpectedCreatureIndex(OceanException):
-    pass
+class UnexpectedCreatureMark(OceanException):
+    def __init__(self, mark):
+        marks = "Valid types: " + ", ".join(creature_marks.values()) + "."
+        self.descr = marks + " Got {}".format(mark)
+
+
+class UnexpectedCreatureType(OceanException):
+    def __init__(self, creature):
+        types = "Valid types: " + ", ".join(creature_marks.keys()) + "."
+        self.descr = types + " Got {}".format(type(creature))
 
 
 class Creature:
+    def move(self, neighbors, starting_location):
+        return False
+
+    def eat(self, neighbors):
+        return False
+
+    def reduce_stamina(self):
+        return False
+
+
+class AliveCreature(Creature):
     def __init__(self, speed):
         self.speed = speed
 
-    def move(self, neighbors):
+    def move(self, neighbors, starting_location):
         potential_locations = [cell for cell in neighbors
                                if cell.creature is None and
                                cell.newcomer is None]
@@ -22,8 +45,10 @@ class Creature:
 
         for location in potential_locations:
             if bernoulli_rvs(probability):
-                return location
-        return None
+                location.newcomer = self
+                starting_location.creature = None
+                return True
+        return False
 
     def reproduction(self, neighbors):
         potential_locations = [cell for cell in neighbors
@@ -33,16 +58,16 @@ class Creature:
             random.choice(potential_locations).newcomer = self.child()
 
 
-class Victim(Creature):
+class Victim(AliveCreature):
     def child(self):
         return Victim(self.speed)
 
 
-class Obstacle:
+class Obstacle(Creature):
     pass
 
 
-class Predator(Creature):
+class Predator(AliveCreature):
     def __init__(self, speed, eat_rate, stamina):
         super(Predator, self).__init__(speed)
         self.stamina = stamina
@@ -56,7 +81,7 @@ class Predator(Creature):
 
     def eat(self, neighbors):
         potential_targets = [cell for cell in neighbors
-                             if has_simple_creature(cell)]
+                             if has_victim(cell)]
         random.shuffle(potential_targets)
         probability = self.eat_rate[len(potential_targets)]
 
@@ -70,33 +95,40 @@ class Predator(Creature):
                 return True
         return False
 
+    def reduce_stamina(self):
+        self.stamina -= 1
+        return self.stamina == 0
 
-def has_simple_creature(cell):
+
+def has_victim(cell):
     return (isinstance(cell.creature, Victim) or
             isinstance(cell.newcomer, Victim))
 
 
-def get_creature(creature_index, params):
-    if creature_index == 0:
+def get_creature(mark, params):
+    if mark == creature_marks['None']:
         return None
-    if creature_index == 1:
-        return Predator(params[0], params[2], params[4])
-    if creature_index == 2:
-        return Victim(params[1])
-    if creature_index == 3:
+    if mark == creature_marks['Predator']:
+        return Predator(**params['predator params'])
+    if mark == creature_marks['Victim']:
+        return Victim(**params['victim params'])
+    if mark == creature_marks['Obstacle']:
         return Obstacle()
 
-    raise UnexpectedCreatureIndex()
+    raise UnexpectedCreatureMark(mark)
 
 
-def creature_index(creature):
+def get_creature_mark(creature):
     if creature is None:
-        return 0
+        return creature_marks['None']
     if isinstance(creature, Predator):
-        return 1
+        return creature_marks['Predator']
     if isinstance(creature, Victim):
-        return 2
-    return 3
+        return creature_marks['Victim']
+    if isinstance(creature, Obstacle):
+        return creature_marks['Obstacle']
+
+    raise UnexpectedCreatureType(creature)
 
 
 def probability_array(p_0):
@@ -115,49 +147,45 @@ def bernoulli_rvs(p):
     return True if random.random() < p else False
 
 
+class Cell:
+    def __init__(self):
+        self.newcomer = None
+
+    def start_turn(self):
+        """
+        Creature can do only one action at one turn: eat or move.
+        Only Predators can eat, of course.
+        Firstly he tries to eat. If didn't succeed - tries to move.
+        """
+        if self.creature is not None:
+            if not self.creature.eat(self.neighbors):
+                self.creature.move(self.neighbors, self)
+
+    def end_turn(self):
+        if self.creature is not None:
+            if self.creature.reduce_stamina():
+                self.creature = None
+
+
 class Ocean:
-    class Cell:
-        def __init__(self):
-            self.newcomer = None
-
-        def start_turn(self):
-            """
-            Creature can do only one action at one turn: eat or move.
-            Only Predators can eat, of course.
-            Firstly he tries to eat. If didn't succeed - tries to move.
-            """
-            if self.creature is not None:
-                if isinstance(self.creature, Predator):
-                    if self.creature.eat(self.neighbors):
-                        return None
-
-                new_cell = self.creature.move(self.neighbors)
-                if new_cell is not None:
-                    new_cell.newcomer = self.creature
-                    self.creature = None
-
-        def end_turn(self):
-            if isinstance(self.creature, Predator):
-                self.creature.stamina -= 1
-                if self.creature.stamina == 0:
-                    self.creature = None
-
     def __init__(self, start_table, params):
         """
         params: predator_speed, victim_speed, eat_rate,
         predator_reproduction_period, victim_reproduction_period,
         predator_stamina
         """
-        self.params = list(map(probability_array, params[:3])) + params[3:]
-        self.turns_till_reproduction = params[-3:-1]
+
+        creature_params = self.get_creature_params(params)
+        self.reproduction_periods = params[-2:]
+        self.turns_till_reproduction = params[-2:]
         x_lim = len(start_table[0])
         y_lim = len(start_table)
-        self.table = [[Ocean.Cell() for i in range(x_lim)]
+        self.table = [[Cell() for i in range(x_lim)]
                       for i in range(y_lim)]
 
         for start_line, line in zip(start_table, self.table):
-            for creature_index, cell in zip(start_line, line):
-                cell.creature = get_creature(creature_index, self.params)
+            for mark, cell in zip(start_line, line):
+                cell.creature = get_creature(mark, creature_params)
 
         for i in range(y_lim):
             for j in range(x_lim):
@@ -169,6 +197,14 @@ class Ocean:
                 for potential_neighbor in potential_neighbors:
                     if not isinstance(potential_neighbor.creature, Obstacle):
                         self.table[i][j].neighbors.append(potential_neighbor)
+
+    @staticmethod
+    def get_creature_params(raw_params):
+        eat_rate = probability_array(raw_params[2])
+        return {'victim params': {'speed': probability_array(raw_params[1])},
+                'predator params': {'speed': probability_array(raw_params[0]),
+                                    'eat_rate': eat_rate,
+                                    'stamina': raw_params[3]}}
 
     def end_phase(self):
         for line in self.table:
@@ -184,16 +220,14 @@ class Ocean:
         """
         for line in self.table:
             for cell in line:
-                if not isinstance(cell.creature, Obstacle):
-                    cell.start_turn()
+                cell.start_turn()
         self.end_phase()
 
-        params = self.params[-3:-1]
         creature_type = [Predator, Victim]
-        for i in range(len(self.turns_till_reproduction)):
+        for i, period_len in enumerate(self.reproduction_periods):
             self.turns_till_reproduction[i] -= 1
             if self.turns_till_reproduction[i] == 0:
-                self.turns_till_reproduction[i] = params[i]
+                self.turns_till_reproduction[i] = period_len
                 for line in self.table:
                     for cell in line:
                         if isinstance(cell.creature, creature_type[i]):
@@ -202,8 +236,7 @@ class Ocean:
 
         for line in self.table:
             for cell in line:
-                if not isinstance(cell.creature, Obstacle):
-                    cell.end_turn()
+                cell.end_turn()
 
         if self.creatures_counter():
             return True
@@ -223,7 +256,7 @@ class Ocean:
                 if isinstance(cell.creature, Predator):
                     predators_cnt += 1
                 else:
-                    if isinstance(cell.creature, Creature):
+                    if isinstance(cell.creature, Victim):
                         victims_cnt += 1
                 if (not needstat) and victims_cnt and predators_cnt:
                     return False
@@ -236,9 +269,18 @@ class Ocean:
         result = ""
         for line in self.table:
             for cell in line:
-                result += str(creature_index(cell.creature)) + " "
+                result += str(get_creature_mark(cell.creature)) + " "
             result += "\n"
         return result
+
+    @staticmethod
+    def print_legend():
+        print('legend:')
+        marks = ['.', 'v', 'p', 'X']
+        describtions = ['empty cell', 'victim', 'predator', 'obstacle']
+        for mark, describtion in zip(marks, describtions):
+            print("{} - {}".format(mark, describtion))
+        print()
 
 
 def init_ocean(file_name):
@@ -251,9 +293,14 @@ def init_ocean(file_name):
     return ocean
 
 if __name__ == '__main__':
-    params = [0.7, 0.5, 0.6, 8, 5, 6]
-    table = [[0, 0, 1, 0], [2, 0, 0, 3], [2, 3, 0, 1], [3, 2, 0, 0]]
+    params = [0.7, 0.5, 0.6, 4, 5, 6]
+    table = [['.', '.', 'v', '.'],
+             ['p', '.', '.', 'X'],
+             ['p', 'X', '.', 'v'],
+             ['X', 'v', '.', '.']]
     ocean = Ocean(table, params)
+    Ocean.print_legend()
+
     for i in range(20):
         print(ocean)
         if ocean.make_turn():
