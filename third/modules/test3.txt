@@ -1,0 +1,7 @@
+import a, b
+import c, d, d, c
+import a.b.c
+import a.b
+import this; import that
+importing = True
+def myimport(): pass

@@ -1,1 +1,6 @@
-import joke, joke2
+import joke, secondjoke, thirdjoke, forthjoke
+from fifthjoke import falsejoke, falsejoke, falsejoke
+
+werifuwhgfvpwrehufhwrpufh import sixthjoke as;lfwahfouweahngouh	guvewhgf
+from ;falsejoke import seventhjoke import
+from lastjoke import falsejoke

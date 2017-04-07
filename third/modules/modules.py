@@ -11,9 +11,9 @@ for line in lines:
         modules.add(m.group(1))
         line = line.replace(m.group(0), '')
 
-    matches = re.finditer("import +([a-zA-Z\.]+(, +[a-zA-Z\.])*)", line)
+    matches = re.finditer("import +([a-zA-Z\.]+(, +[a-zA-Z\.]+)*)", line)
     for m in matches:
-        for module in m.group(1).split(" ,"):
-            modules.add(module)
+        for module in m.group(1).split(","):
+            modules.add(module.strip())
 
 print(", ".join([s for s in sorted(modules)]))
