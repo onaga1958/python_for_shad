@@ -7,8 +7,8 @@ import random
 def do_tokenize(text, no_print=False):
     tokens = []
     for line in text:
-        letter = 'а-яА-Яa-zA-Z\-\''
-        match = re.finditer('([' + letter + ']+|[0-9]+|[^' + letter + ' "])',
+        letter = 'а-яёЁА-Яa-zA-Z\''
+        match = re.finditer('([' + letter + ']+|[0-9]+|[^' + letter + '0-9 "])',
                             line)
         tokens.append([m.group(0) for m in match])
 
@@ -60,8 +60,8 @@ def generate(text, depth, size, no_print=False):
     last_words = []
     prev_word = None
     ban_before = ["'", "-", ',', '.', '!', '?', ':', ';']
-    ban_after = [None, "'", "-", '"']
-    capitalize_after = [None, '.']
+    ban_after = [None, "'", '"']
+    capitalize_after = [None, '.', '-']
     if no_print:
         result = ""
 
@@ -70,12 +70,17 @@ def generate(text, depth, size, no_print=False):
         while proba_dict.get(history) is None:
             history = history[1:]
         next_word = generate_next_word(proba_dict[history])
-
         if next_word not in ban_before and prev_word not in ban_after:
             if no_print:
                 result += " "
             else:
                 print(end=" ")
+
+        if next_word == '-':
+            if no_print:
+                result += "\n"
+            else:
+                print()
 
         if prev_word in capitalize_after:
             next_word = next_word.capitalize()
@@ -121,7 +126,7 @@ def main_test(instruction):
 def test_tokenize(tests_number):
     texts = [["Hello, world!"],
              ["Joker beat000, since 199!!11joker."],
-             ["test for multi-lined text",
+             ["test for multilined text",
               "this is second line, obviously",
               "let's put one more line"]]
 
@@ -130,7 +135,7 @@ def test_tokenize(tests_number):
     answers = [[['Hello', ',', 'world', '!']],
                [['Joker', 'beat', '000', ',', 'since', '199', '!', '!',
                  '11', 'joker', '.']],
-               [['test', 'for', 'multi-lined', 'text'],
+               [['test', 'for', 'multilined', 'text'],
                 ['this', 'is', 'second', 'line', ',', 'obviously'],
                 ['let\'s', 'put', 'one', 'more', 'line']]]
 
