@@ -1,3 +1,0 @@
-probabilities --depth 1
-First test sentence
-Second test line
