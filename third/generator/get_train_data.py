@@ -12,7 +12,7 @@ def clear_html(html):
     html = re.sub('<a.*>.*</a>', '', html)
     html = re.sub('<Улицы"', '"Улицы"', html)
     html = re.sub('---+', '', html)
-    html = re.sub('.*pellcheck .*', '', html)
+    html = re.sub('.*pell.*', '', html)
     return html
 
 
@@ -20,10 +20,38 @@ def to_space(matchobj):
     return ''.join([' ' for _ in matchobj.group(0)])
 
 
+def change(matchobj):
+    pattern = matchobj.group(0)
+    change_dict = {'а': 'б', 'б': 'в', 'в': 'ч', 'г': 'з', 'д': 'д',
+                   'е': 'е', 'ж': 'ц', 'з': 'ъ', 'и': 'й', 'й': 'к',
+                   'к': 'л', 'л': 'м', 'м': 'н', 'н': 'о', 'о': 'п',
+                   'п': 'р', 'р': 'т', 'с': 'у', 'т': 'ф', 'у': 'х',
+                   'ф': 'ж', 'х': 'и', 'ц': 'г', 'ч': 'ю', 'ш': 'ы',
+                   'щ': 'э', 'ъ': 'я', 'ы': 'щ', 'ь': 'ш', 'э': 'ь',
+                   'ю': 'а', 'я': 'с', 'ё': 'ё'}
+
+    right_dict = {}
+    for key, value in change_dict.items():
+        right_dict[value] = key
+
+    if pattern.islower():
+        return right_dict[pattern].upper()
+    else:
+        return right_dict[pattern.lower()]
+
+
+def change_letters(html):
+    return re.sub('[а-яёА-ЯЁ]', change, html)
+
+
 def url_to_file(url, begin, out_file_name='page.html'):
     with urlopen(url) as conn:
         data = conn.read()
         html = data.decode('windows-1251')
+
+        if len(re.findall(begin, html[:500])) == 0:
+            html = change_letters(html)
+
         html = clear_html(html)
 
     with open(out_file_name, 'w') as f:
@@ -44,7 +72,10 @@ def get_text(html, begin):
     body = get_child(body, tag='pre')
 
     text = body.text.strip()
-    return text
+    if re.match(begin, text) is None:
+        return None
+    else:
+        return text
 
 
 def get_child(body, child_attrib=None, attrib=None, tag='div'):
@@ -87,7 +118,7 @@ def main():
     texts = []
     for url, begin in zip(urls, valid_begins):
         html = url_to_file(url, begin)
-        text = get_text(html)
+        text = get_text(html, begin)
         if text is None:
             continue
         texts.append(post_work(text))

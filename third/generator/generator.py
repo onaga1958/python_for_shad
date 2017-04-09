@@ -71,6 +71,17 @@ def smart_print(result, no_print, string):
         print(string, end='')
     return result
 
+
+def set_was_quote(new_was_quote, ban_after, ban_before):
+    if new_was_quote:
+        ban_before.pop()
+        ban_after.append('"')
+    else:
+        ban_after.pop()
+        ban_before.append('"')
+    return new_was_quote
+
+
 def generate(depth, size, text=None, no_print=False, proba_dict=None):
     if text is None and proba_dict is None:
         raise ValueError('both text and proba_dict cannot be None')
@@ -108,17 +119,16 @@ def generate(depth, size, text=None, no_print=False, proba_dict=None):
             next_word = generate_next_word(proba_dict[history])
             num_iter += 1
 
+        if next_word == '.' and was_quote:
+            was_quote = set_was_quote(False, ban_after, ban_before)
+            result = smart_print(result, no_print, '"')
+
         if next_word == '"':
-            was_quote = not was_quote
-            if was_quote:
-                ban_before = ban_before[:-1]
-                ban_after.append('"')
-            else:
-                ban_after = ban_after[:-1]
-                ban_before.append('"')
+            was_quote = set_was_quote(not was_quote, ban_after, ban_before)
 
         if next_word == '-':
             if was_quote:
+                was_quote = set_was_quote(False, ban_after, ban_before)
                 result = smart_print(result, no_print, '"')
             if prev_word != '.':
                 result = smart_print(result, no_print, '.')
@@ -139,6 +149,7 @@ def generate(depth, size, text=None, no_print=False, proba_dict=None):
             last_words = last_words[1:]
         last_words.append(next_word)
         prev_word = next_word
+
     if no_print:
         return result
     else:
