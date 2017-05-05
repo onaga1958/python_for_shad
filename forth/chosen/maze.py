@@ -76,7 +76,7 @@ class Game:
         self.players = []
         for i in range(alive_players_number):
             print("Enter {} player name: ".format(i + 1), end='')
-            self.players.append(input().split('\n')[0])
+            self.players.append(AlivePlayer(input().split('\n')[0]))
 
         self.players += [SmartBot() for _ in range(smart_bots_number)]
         self.players += [RandomBot() for _ in range(random_bots_number)]
@@ -438,7 +438,7 @@ def main():
     games_number = 1000
     smart_wins = 0
     for i in range(games_number):
-        game = Game("field2.txt", random_bots_number=1, smart_bots_number=1, alive_players_number=0)
+        game = Game("field1.txt", random_bots_number=1, smart_bots_number=1, alive_players_number=1)
         if isinstance(game.play_game(), SmartBot):
             smart_wins += 1
     print("Smart won " + str(smart_wins) + "/" + str(games_number))
