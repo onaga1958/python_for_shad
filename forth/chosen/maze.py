@@ -2,13 +2,14 @@ import argparse
 import random
 import string
 import numpy
+import queue
 
 
 class Cell:
-    def __init__(self):
-        self.loot = []
+    def __init__(self, loot=[]):
+        self.loot = loot
 
-    def can_move(self, direction):
+    def can_move(self, direction, game, player):
         return {'flag': True}
 
     def arrive(self, game, player):
@@ -25,25 +26,38 @@ class Exit(Cell):
         super().__init__()
         self.direction = direction
 
-    def can_move(self, direction):
+    def can_move(self, direction, game, player):
         if direction == self.direction:
             raise GameEnd()
         else:
-            return super().can_move(direction)
+            return super().can_move(direction, game, player)
 
     def __str__(self):
         return self.direction
 
 
 class Stun(Cell):
-    def __init__(self, duration):
+    def __init__(self, duration=5):
         super().__init__()
-        sel.duration = duration
+        self.duration = duration
+        self.stunned_players = {}
+
+    def arrive(self, game, player):
+        super().arrive(game, player)
+        self.stunned_players[player.name] = game.turn
+
+    def can_move(self, direction, game, player):
+        stun_start = self.stunned_players.get(player.name, -self.duration)
+        if game.turn > stun_start + self.duration:
+            return super().can_move(direction, game, player)
+        else:
+            return {'flag': False, 'message': STUNED}
 
 
 DIRECTIONS = {'u': (-1, 0), 'r': (0, 1), 'l': (0, -1), 'd': (1, 0)}
 INV_DIR = {value: key for key, value in DIRECTIONS.items()}
 CELL_KEYS = {direction: Exit(direction) for direction in DIRECTIONS.keys()}
+CELL_KEYS['S'] = Stun()
 CELL_KEYS['.'] = Cell()
 PARSER = argparse.ArgumentParser()
 subparsers = PARSER.add_subparsers(dest='command')
@@ -70,8 +84,15 @@ class IncorrectInputFile(MazeException):
         self.describtion = "IncorrectInputFile: " + name
 
 
+class DifficultParams(MazeException):
+    def __init__(self, **kwargs):
+        self.describtion = "Fail to generate correct field with params: "
+        self.describtion += str(kwargs)
+
+
 class Game:
-    def __init__(self, field_file, random_bots_number, smart_bots_number, alive_players_number):
+    def __init__(self, field_file, random_bots_number, smart_bots_number,
+                 alive_players_number):
         self.field = Field(field_file)
         self.players = []
         for i in range(alive_players_number):
@@ -89,7 +110,7 @@ class Game:
 
     def move(self, player, direction):
         old_pos = self.positions[player.name]
-        can_move = self.field.can_move(old_pos, direction)
+        can_move = self.field.can_move(old_pos, direction, self, player)
         if can_move['flag']:
             self.positions[player.name] = get_new_pos(old_pos, direction)
             self.field[self.positions[player.name]].arrive(self, player)
@@ -118,7 +139,7 @@ class Game:
 
         for player in self.players:
             print(player.name + " turn.")
-            # print(player.position)
+            print(self.positions[player.name])
             try:
                 player.turn(self)
             except GameEnd as error:
@@ -130,7 +151,8 @@ class Game:
 
     def print_rules(self):
         rules = ("\nHello, everybody! You are in Maze!\n" +
-                 "Maze has size {}x{}.\n".format(self.field.size, self.field.size) +
+                 "Maze has size {}x{}.\n".format(self.field.size,
+                                                 self.field.size) +
                  "Rules are pretty simple.\n" +
                  "Your goal is to get out of here.\n" +
                  "There are exits (at least one) somewhere in Maze.\n" +
@@ -194,8 +216,15 @@ class Field:
     def __getitem__(self, position):
         return self.field[position[0]][position[1]]
 
-    def can_move(self, position, direction):
-        result = self[position].can_move(direction)
+    def __setitem__(self, position, value):
+        self.field[position[0]][position[1]] = value
+
+    def can_move(self, position, direction, game=None, player=None):
+        if game is None:
+            result = {'flag': True}
+        else:
+            result = self[position].can_move(direction, game, player)
+
         if result['flag']:
             if check_valid(self.size, position, direction):
                 if DIRECTIONS[direction][1]:
@@ -222,6 +251,40 @@ class Field:
         return result
 
 
+class RandomPriorityQueue(queue.PriorityQueue):
+    """
+    This class is implementation of priority queue in which
+
+    elements with the same priority are erased in random order.
+
+    Means that inserted elements are pairs (priority, value).
+    """
+    # Need it in this task to make SmartBot more independent from map
+    def __init__(self):
+        super().__init__()
+        self.values = {}
+
+    def put(self, element):
+        try:
+            priority, value = element
+        except Exception:
+            raise ValueError('Incorrect elemnet for RandomPriorityQueue.' +
+                             ' Expect pair (priority, value)') from None
+
+        while True:
+            random_key = random.random()
+            if self.values.get(random_key) is None:
+                self.values[random_key] = value
+                break
+
+        super().put((priority, random_key), False)
+
+    def get(self):
+        priority, random_key = super().get(False)
+        value = self.values.pop(random_key)
+        return (priority, value)
+
+
 def get_position():
         try:
             return list(map(int, input().split()))
@@ -229,17 +292,9 @@ def get_position():
             return [-1, -1]
 
 
-def shuffle(array):
-    """
-    Return shuffled array, without changing array itself.
-
-    Need this, because shuffle from random and numpy makes in-place shuffle
-    """
-    return numpy.random.choice(list(array), size=len(array), replace=False)
-
-
 def get_new_pos(position, direction):
-    return tuple(pos + add for pos, add in zip(position, DIRECTIONS[direction]))
+    return tuple(pos + add
+                 for pos, add in zip(position, DIRECTIONS[direction]))
 
 
 def get_move_direction(position, prev_position):
@@ -278,6 +333,44 @@ def build_route(node, nodes):
             for node, prev_node in zip(path[1:], path)]
 
 
+def set_walls(hwalls, vwalls, position, direction):
+    if DIRECTIONS[direction][1]:
+        new_cord = position[1] + min(DIRECTIONS[direction][1], 0)
+        vwalls[position[0]][new_cord] = True
+    else:
+        new_cord = position[0] + min(DIRECTIONS[direction][0], 0)
+        hwalls[new_cord][position[1]] = True
+
+
+def multinomial_rvs(probs_dict):
+    """
+    Generate value from keys with probabilities given in values.
+
+    If values in None(default) generate from range(len(probabilities))
+    """
+    stop_value = random.random()
+    moving_sum = 0
+    for value, prob in probs_dict.items():
+        moving_sum += prob
+        if moving_sum >= stop_value:
+            return value
+
+
+def choice(array, number):
+    # just because np.choice can't deal with non 1-dim data
+    encode_dict = {random.random(): element for element in array}
+    codes = numpy.random.choice(list(encode_dict.keys()), number, False)
+    return [encode_dict[code] for code in codes]
+
+
+def get_potential_exits(size):
+    return {(i, j): [d for d in DIRECTIONS.keys()
+                     if not check_valid(size, (i, j), d)]
+            for i in range(size) for j in range(size)
+            if i == 0 or i == size - 1 or
+            j == 0 or j == size - 1}
+
+
 class Player:
     def __init__(self, name):
         self.name = name
@@ -287,6 +380,7 @@ class Player:
         for key in loot.keys():
             loot[key], self.loot[key] = key.update(loot[key],
                                                    self.loot.get(key))
+
 
 class AlivePlayer(Player):
     def choose_start(self, size):
@@ -298,7 +392,6 @@ class AlivePlayer(Player):
             print(self.name + " choose your position: ", end='')
             start = get_position()
 
-        self.position = start
         self.start = start
         return start
 
@@ -333,7 +426,6 @@ class RandomBot(Bot):
 
     def choose_start(self, size):
         self.start = [random.randint(0, size - 1) for i in range(2)]
-        self.position = self.start
         super().choose_start()
         return self.start
 
@@ -345,7 +437,7 @@ class RandomBot(Bot):
         super().__init__(loot)
         for obj in self.loot.keys():
             if old_loot.get(obj) is None:
-                if obj.directional == True:
+                if obj.directional:
                     self.possible_commands += [obj.name + " " + d
                                                for d in DIRECTIONS.keys()]
                 else:
@@ -359,12 +451,7 @@ class SmartBot(Bot):
 
     def choose_start(self, size):
         self.maze_size = size
-
-        self.potential_exits = {(i, j): [d for d in DIRECTIONS.keys()
-                                         if not check_valid(size, (i, j), d)]
-                                for i in range(size) for j in range(size)
-                                if i == 0 or i == size - 1 or
-                                j == 0 or j == size -1}
+        self.potential_exits = get_potential_exits(size)
         self.start = random.choice(list(self.potential_exits.keys()))
         self.position = self.start
         self.field = Field(size=size)
@@ -374,29 +461,28 @@ class SmartBot(Bot):
     def get_route(self, start_node):
         nodes = {(i, j): None for i in range(self.maze_size)
                  for j in range(self.maze_size)}
-        queue = [tuple(start_node)]
-        nodes[start_node] = {'depth': 0, 'ancestor': None}
-        closest = None
+        priority_queue = RandomPriorityQueue()
+        priority_queue.put((0, start_node))
+        nodes[start_node] = {'distance': 0, 'ancestor': None}
 
-        depth = 0
-        while len(queue) != 0:
-            depth += 1
-            cur_node = queue.pop(0)
-            if self.potential_exits.get(cur_node) is not None:
-                return build_route(cur_node, nodes)
-            # if cur_node is None:
-            #     distance = nodes[cur_node]['depth'] + self.euristic(cur_node)
-            #     if closest is None or closest['distance'] > distance:
-            #         closest = {'node': cur_node, 'distance': distance}
+        while not priority_queue.empty():
+            cur_node = priority_queue.get()
+            if self.potential_exits.get(cur_node[1]) is not None:
+                return build_route(cur_node[1], nodes)
             else:
-                for direction in shuffle(DIRECTIONS.keys()):
-                    new_pos = get_new_pos(cur_node, direction)
-                    if (self.field.can_move(cur_node, direction)['flag'] and
-                            nodes[new_pos] is None):
-                        nodes[new_pos] = {'depth': depth, 'ancestor': cur_node}
-                        queue.append(new_pos)
-
-        # return build_route(closest['node'], nodes)
+                for direction in DIRECTIONS.keys():
+                    new_pos = get_new_pos(cur_node[1], direction)
+                    if (self.field.can_move(cur_node[1], direction)['flag']):
+                        if isinstance(self.field[new_pos], Stun):
+                            edge = self.field[new_pos].duration
+                        else:
+                            edge = 1
+                        new_distance = cur_node[0] + edge
+                        if (nodes[new_pos] is None or
+                                nodes[new_pos]['distance'] > new_distance):
+                            nodes[new_pos] = {'distance': new_distance,
+                                              'ancestor': cur_node[1]}
+                            priority_queue.put((new_distance, new_pos))
 
     def turn(self, game):
         if len(self.route) == 0:
@@ -410,15 +496,24 @@ class SmartBot(Bot):
 
     def turn_done(self, active, message):
         if active == self:
+            if message == STUNED:
+                if not check_valid(self.maze_size, self.position,
+                                   self.direction):
+                    self.potential_exits[self.position].append(self.direction)
+                self.route = []
+                if self.sudden_stun:
+                    self.field[self.position].duration += 1
+                if isinstance(self.field[self.position], Cell):
+                    self.field[self.position] = Stun(1)
+                    self.sudden_stun = True
+            else:
+                self.sudden_stun = False
+
             if message == WALL:
                 if check_valid(self.maze_size, self.position, self.direction):
                     self.route = []
-                    if DIRECTIONS[self.direction][1]:
-                        new_cord = self.position[1] + min(DIRECTIONS[self.direction][1], 0)
-                        self.field.vwalls[self.position[0]][new_cord] = True
-                    else:
-                        new_cord = self.position[0] + min(DIRECTIONS[self.direction][0], 0)
-                        self.field.hwalls[new_cord][self.position[1]] = True
+                    set_walls(self.field.hwalls, self.field.vwalls,
+                              self.position, self.direction)
                 else:
                     if len(self.potential_exits[self.position]) == 0:
                         self.potential_exits.pop(self.position)
@@ -434,11 +529,86 @@ class SmartBot(Bot):
         game.exec_correct_command(self.direction, self)
 
 
+def normalize_probs_dict(probs_dict):
+    summary = sum(probs_dict.values())
+    for key in probs_dict.keys():
+        probs_dict[key] /= summary
+
+
+def check_field(file_name):
+    field = Field(file_name)
+    nodes = {(i, j): True for i in range(field.size)
+             for j in range(field.size)}
+    queue = [(0, 0)]
+    nodes[(0, 0)] = False
+
+    while len(queue) != 0:
+        cur_node = queue.pop(0)
+        for direction in DIRECTIONS.keys():
+            new_node = get_new_pos(cur_node, direction)
+            if (check_valid(field.size, cur_node, direction) and
+                    nodes[new_node] and
+                    field.can_move(cur_node, direction)['flag']):
+                nodes[new_node] = False
+                queue.append(new_node)
+
+    for node in nodes.values():
+        if node:
+            return False
+    return True
+
+
+def generate_field(file_name, size, wall_prob, cell_probs, exits_number=1):
+    normalize_probs_dict(cell_probs)
+
+    potential_exits = get_potential_exits(size)
+    exits = choice(potential_exits.keys(), exits_number)
+    exits = {(i, j): random.choice(potential_exits[(i, j)]) for i, j in exits}
+    with open(file_name, 'w') as file:
+        print(size, file=file)
+        for line in range(size):
+            for column in range(size):
+                if (line, column) in exits.keys():
+                    print(exits[(line, column)], file=file, end='')
+                else:
+                    print(multinomial_rvs(cell_probs), file=file, end='')
+                if column != size - 1:
+                    wall = random.random() < wall_prob
+                    print(file=file, end='|' if wall else ' ')
+            print(file=file)
+            if line != size - 1:
+                for column in range(size):
+                    wall = random.random() < wall_prob
+                    print(file=file, end='-' if wall else ' ')
+                    if column != size - 1:
+                        print(file=file, end=' ')
+                print(file=file)
+
+
+def generate_correct_field(tries_nubmer, **kwargs):
+    for i in range(tries_nubmer):
+        generate_field(**kwargs)
+        if check_field(kwargs['file_name']):
+            return
+    raise DifficultParams(**kwargs)
+
+
 def main():
     games_number = 1000
+    players = {'random_bots_number': 1,
+               'smart_bots_number': 1,
+               'alive_players_number': 0}
+    field_name = 'field4.txt'
+    field_args = {'file_name': field_name,
+                  'size': 10,
+                  'wall_prob': 0.3,
+                  'cell_probs': {'.': 0.9, 'S': 0.1},
+                  'exits_number': 2}
+
     smart_wins = 0
     for i in range(games_number):
-        game = Game("field1.txt", random_bots_number=1, smart_bots_number=1, alive_players_number=1)
+        # generate_correct_field(100, **field_args)
+        game = Game(field_name, **players)
         if isinstance(game.play_game(), SmartBot):
             smart_wins += 1
     print("Smart won " + str(smart_wins) + "/" + str(games_number))
