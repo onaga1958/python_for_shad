@@ -4,25 +4,20 @@ import re
 import sys
 import argparse
 import random
+import unittest
 
 
-def do_tokenize(text, no_print=False, add_sapce=True, only_alpha=False):
+letter = 'а-яёЁА-Яa-zA-Z\''
+default_pattern = ('([' + letter + ']+|[0-9]+|[^' +
+                   letter + '0-9 ])')
+
+
+def do_tokenize(text, pattern=default_pattern):
     tokens = []
     for line in text:
-        if only_alpha:
-            pattern = '[A-Za-zа-яА-ЯёЁ]+'
-        else:
-            letter = 'а-яёЁА-Яa-zA-Z\''
-            space = '' if add_sapce else ' '
-            pattern = ('([' + letter + ']+|[0-9]+|[^' +
-                       letter + '0-9' + space + '])')
-
         match = re.finditer(pattern, line)
         tokens.append([m.group(0) for m in match])
 
-    if not no_print:
-        for token in tokens[0]:
-            print(token)
     return tokens
 
 
@@ -42,14 +37,13 @@ def normalize_proba_dict(proba_dict):
             end_variety[second_key] /= total_entries
 
 
-def get_probabilities(text, depth, no_print=False, only_alpha=True):
-    tokens = do_tokenize(text, True, False, only_alpha)
+def get_probabilities(depth, tokens):
     probabilities_dict = {}
     for line_tokens in tokens:
-        for i in range(len(line_tokens)):
-            for j in range(min(len(line_tokens) - i, depth + 1)):
-                first_key = tuple(line_tokens[i:i + j])
-                second_key = line_tokens[i + j]
+        for begin in range(len(line_tokens)):
+            for lenght in range(min(len(line_tokens) - begin, depth + 1)):
+                first_key = tuple(line_tokens[begin:begin + lenght])
+                second_key = line_tokens[begin + lenght]
                 if probabilities_dict.get(first_key) is None:
                     probabilities_dict[first_key] = {second_key: 1}
                 else:
@@ -59,17 +53,12 @@ def get_probabilities(text, depth, no_print=False, only_alpha=True):
                         probabilities_dict[first_key][second_key] += 1
 
     normalize_proba_dict(probabilities_dict)
-    if not no_print:
-        print_proba_dict(probabilities_dict)
     return probabilities_dict
 
 
-def smart_print(result, no_print, string):
-    if no_print:
-        result += string
-    else:
-        print(string, end='')
-    return result
+def preparation(text, depth):
+    tokens = do_tokenize(text)
+    return get_probabilities(depth, tokens)
 
 
 def set_was_quote(new_was_quote, ban_after, ban_before):
@@ -82,12 +71,7 @@ def set_was_quote(new_was_quote, ban_after, ban_before):
     return new_was_quote
 
 
-def generate(depth, size, text=None, no_print=False, proba_dict=None):
-    if text is None and proba_dict is None:
-        raise ValueError('both text and proba_dict cannot be None')
-
-    if proba_dict is None:
-        proba_dict = get_probabilities(text, depth, True, False)
+def generate(depth, size, proba_dict):
     last_words = []
     prev_word = None
     ban_before = ["'", "-", ',', '.', '!', '?', ':', ';', ')', '"']
@@ -121,7 +105,7 @@ def generate(depth, size, text=None, no_print=False, proba_dict=None):
 
         if next_word == '.' and was_quote:
             was_quote = set_was_quote(False, ban_after, ban_before)
-            result = smart_print(result, no_print, '"')
+            result += '"'
 
         if next_word == '"':
             was_quote = set_was_quote(not was_quote, ban_after, ban_before)
@@ -129,19 +113,19 @@ def generate(depth, size, text=None, no_print=False, proba_dict=None):
         if next_word == '-':
             if was_quote:
                 was_quote = set_was_quote(False, ban_after, ban_before)
-                result = smart_print(result, no_print, '"')
+                result += '"'
             if prev_word != '.':
-                result = smart_print(result, no_print, '.')
+                result += '.'
 
             prev_word = None
-            result = smart_print(result, no_print, '\n')
+            result += '\n'
 
         if next_word not in ban_before and prev_word not in ban_after:
-            result = smart_print(result, no_print, ' ')
+            result += ' '
 
         if prev_word in capitalize_after:
             next_word = next_word.capitalize()
-        result = smart_print(result, no_print, next_word)
+        result += next_word
 
         if next_word == '-':
             last_words = []
@@ -150,10 +134,7 @@ def generate(depth, size, text=None, no_print=False, proba_dict=None):
         last_words.append(next_word)
         prev_word = next_word
 
-    if no_print:
-        return result
-    else:
-        print()
+    return result
 
 
 def generate_next_word(words_dict):
@@ -165,116 +146,128 @@ def generate_next_word(words_dict):
             return key
 
 
-def main_test(instruction):
-    all_test_flag = instruction is None
-    tests_number = [0, 0]
-    commands = ['tokenize', 'probabilites', 'generate']
-    test_funcs = [test_tokenize, test_probabilites, test_generate]
+class TestTokenize(unittest.TestCase):
+    def test_1(self):
+        text = ["Hello, world!"]
+        answer = [['Hello', ',', 'world', '!']]
+        self.assertEqual(do_tokenize(text), answer)
 
-    for command, test_func in zip(commands, test_funcs):
-        if all_test_flag or command == instruction:
-            test_func(tests_number)
+    def test_2(self):
+        text = ["Joker beat000, since 199!!11joker."]
+        answer = [['Joker', 'beat', '000', ',', 'since', '199', '!', '!',
+                   '11', 'joker', '.']]
+        self.assertEqual(do_tokenize(text), answer)
 
-    print()
-    print("total tests    : {}".format(tests_number[0]))
-    print("completed tests: {}".format(tests_number[1]))
-
-
-def test_tokenize(tests_number):
-    texts = [["Hello, world!"],
-             ["Joker beat000, since 199!!11joker."],
-             ["test for multilined text",
-              "this is second line, obviously",
-              "let's put one more line"]]
-
-    params = [{'no_print': True, 'text': text, 'add_sapce': False}
-              for text in texts]
-
-    answers = [[['Hello', ',', 'world', '!']],
-               [['Joker', 'beat', '000', ',', 'since', '199', '!', '!',
-                 '11', 'joker', '.']],
-               [['test', 'for', 'multilined', 'text'],
-                ['this', 'is', 'second', 'line', ',', 'obviously'],
-                ['let\'s', 'put', 'one', 'more', 'line']]]
-
-    simple_test(do_tokenize, params, answers, tests_number)
+    def test_3(self):
+        text = ["test for multilined text",
+                "this is second line, obviously",
+                "let's put one more line"]
+        answer = [['test', 'for', 'multilined', 'text'],
+                  ['this', 'is', 'second', 'line', ',', 'obviously'],
+                  ['let\'s', 'put', 'one', 'more', 'line']]
+        self.assertEqual(do_tokenize(text), answer)
 
 
-def test_probabilites(tests_number):
-    texts = [["First test sentence",
-              "Second test line"],
-             ["a a b",
-              "b b b c"],
-             ["a a",
-              "b a",
-              "ab b c a",
-              "a a a c a"]]
-    depths = [1, 2, 3]
-    params = [{'no_print': True, 'text': text, 'depth': depth}
-              for depth, text in zip(depths, texts)]
+class TestProbabilites(unittest.TestCase):
+    def test_1(self):
+        tokens = [["First", "test", "sentence"],
+                  ["Second", "test", "line"]]
+        answer = {(): {'First': 1/6,
+                       'Second': 1/6,
+                       'line': 1/6,
+                       'sentence': 1/6,
+                       'test': 1/3},
+                  ('First',): {'test': 1},
+                  ('Second',): {'test': 1},
+                  ('test',): {'line': 0.5,
+                              'sentence': 0.5}}
+        self.assertEqual(get_probabilities(1, tokens), answer)
 
-    answers = [{(): {'First': 1/6,
-                     'Second': 1/6,
-                     'line': 1/6,
-                     'sentence': 1/6,
-                     'test': 1/3},
-                ('First',): {'test': 1},
-                ('Second',): {'test': 1},
-                ('test',): {'line': 0.5,
-                            'sentence': 0.5}},
-               {(): {"a": 2/7, "b": 4/7, "c": 1/7},
-                ("a",): {"a": 1/2, "b": 1/2},
-                ("b",): {"b": 2/3, "c": 1/3},
-                ("a", "a"): {"b": 1},
-                ("b", "b"): {"b": 1/2, "c": 1/2}},
-               {(): {"a": 8/13, "ab": 1/13, "b": 2/13, "c": 2/13},
-                ("a",): {"a": 3/4, "c": 1/4},
-                ("ab",): {"b": 1},
-                ("b",): {"a": 1/2, "c": 1/2},
-                ("c",): {"a": 1},
-                ("a", "a"): {"a": 1/2, "c": 1/2},
-                ("ab", "b"): {"c": 1}, ("b", "c"): {"a": 1},
-                ("a", "c"): {"a": 1},
-                ("ab", "b", "c"): {"a": 1},
-                ("a", "a", "a"): {"c": 1},
-                ("a", "a", "c"): {"a": 1}}]
+    def test_2(self):
+        tokens = [["a", "a", "b"], ["b", "b", "b", "c"]]
+        answer = {(): {"a": 2/7, "b": 4/7, "c": 1/7},
+                  ("a",): {"a": 1/2, "b": 1/2},
+                  ("b",): {"b": 2/3, "c": 1/3},
+                  ("a", "a"): {"b": 1},
+                  ("b", "b"): {"b": 1/2, "c": 1/2}}
+        self.assertEqual(get_probabilities(2, tokens), answer)
 
-    simple_test(get_probabilities, params, answers, tests_number)
-
-
-def test_generate(tests_number):
-    texts = [['A B C D E F G H'], ['A B A C B C'], ['A B C A B A'],
-             ['A B', 'A C', 'A D', 'B A', 'B C', 'B E', 'C A', 'E D', 'D A']]
-    sizes = [2, 2, 3, 3]
-    params = [{'no_print': True, 'text': text, 'depth': size - 1, 'size': size}
-              for text, size in zip(texts, sizes)]
-
-    possible_answers = [['A B', 'B C', 'C D', 'D E', 'E F', 'F G', 'G H'] +
-                        ['H ' + alpha for alpha in "ABCDEFGH"],
-                        ['A B', 'A C', 'B A', 'B C', 'C B'],
-                        ['A B C', 'A B A', 'B C A', 'B A B', 'C A B'],
-                        ['A B A', 'A B C', 'A B E', 'A C A', 'A D A',
-                         'B A B', 'B A C', 'B A D', 'B C A', 'B E D',
-                         'C A B', 'C A C', 'C A D', 'D A D', 'D A B',
-                         'D A C', 'E D A']]
-    for i in range(4):
-        simple_test(generate, params, possible_answers, tests_number,
-                    lambda x, y: x in y)
+    def test_3(self):
+        tokens = [["a", "a"], ["b", "a"], ["ab", "b", "c", "a"],
+                  ["a", "a", "a", "c", "a"]]
+        answer = {(): {"a": 8/13, "ab": 1/13, "b": 2/13, "c": 2/13},
+                  ("a",): {"a": 3/4, "c": 1/4},
+                  ("ab",): {"b": 1},
+                  ("b",): {"a": 1/2, "c": 1/2},
+                  ("c",): {"a": 1},
+                  ("a", "a"): {"a": 1/2, "c": 1/2},
+                  ("ab", "b"): {"c": 1}, ("b", "c"): {"a": 1},
+                  ("a", "c"): {"a": 1},
+                  ("ab", "b", "c"): {"a": 1},
+                  ("a", "a", "a"): {"c": 1},
+                  ("a", "a", "c"): {"a": 1}}
+        self.assertEqual(get_probabilities(3, tokens), answer)
 
 
-def simple_test(func, test_params, test_outputs, tests_number,
-                compare=lambda x, y: x == y):
-    for right_answer, params in zip(test_outputs, test_params):
-        tests_number[0] += 1
-        answer = func(**params)
-        if compare(answer, right_answer):
-            print('OK')
-            tests_number[1] += 1
-        else:
-            print("get output:")
-            print(answer)
-            print("right answer:")
-            print(right_answer)
+class TestGenerate(unittest.TestCase):
+    def do_test(self, depth, size, proba_dict, answers, repeat_num=5):
+        for _ in range(repeat_num):
+            self.assertIn(generate(depth, size, proba_dict), answers)
+
+    def test_1(self):
+        # text: ['A B C D E F G H']
+        alphas = 'ABCDEFGH'
+        proba_dict = {(): {alpha: 1/8 for alpha in alphas}}
+        answers = ['H ' + alpha for alpha in "ABCDEFGH"]
+        for first, second in zip(alphas, alphas[1:]):
+            proba_dict[(first,)] = {second: 1}
+            answers.append(first + ' ' + second)
+
+        self.do_test(1, 2, proba_dict, answers)
+
+    def test_2(self):
+        # text: ['A B A C B C']
+        alphas = 'ABC'
+        proba_dict = {(): {alpha: 1/3 for alpha in alphas}}
+        proba_dict[('A',)] = {'B': 1/2, 'C': 1/2}
+        proba_dict[('B',)] = {'A': 1/2, 'C': 1/2}
+        proba_dict[('C',)] = {'B': 1}
+
+        answers = ['A B', 'A C', 'B A', 'B C', 'C B']
+
+        self.do_test(1, 2, proba_dict, answers)
+
+    def test_3(self):
+        # text: ['A B C A B A']
+        alphas = 'ABC'
+        proba_dict = {(): {'A': 1/2, 'B': 1/3, 'C': 1/6}}
+        proba_dict[('A',)] = {'B': 1}
+        proba_dict[('B',)] = {'C': 1/2, 'A': 1/2}
+        proba_dict[('C',)] = {'A': 1}
+        proba_dict[('A', 'B')] = {'C': 1/2, 'A': 1/2}
+        proba_dict[('B', 'C')] = {'A': 1}
+        proba_dict[('C', 'A')] = {'B': 1}
+
+        answers = ['A B C', 'A B A', 'B C A', 'B A B', 'C A B']
+
+        self.do_test(2, 3, proba_dict, answers)
+
+    def test_4(self):
+        # text: ['A B', 'A C', 'A D', 'B A', 'B C',
+        #        'B E', 'C A', 'E D', 'D A']
+        proba_dict = {(): {'A': 1/3, 'B': 2/9, 'C': 1/6, 'D': 1/6, 'E': 1/9}}
+        proba_dict[('A',)] = {'B': 1/3, 'C': 1/3, 'D': 1/3}
+        proba_dict[('B',)] = {'A': 1/3, 'C': 1/3, 'E': 1/3}
+        proba_dict[('C',)] = {'A': 1}
+        proba_dict[('E',)] = {'D': 1}
+        proba_dict[('D',)] = {'A': 1}
+
+        answers = ['A B A', 'A B C', 'A B E', 'A C A', 'A D A',
+                   'B A B', 'B A C', 'B A D', 'B C A', 'B E D',
+                   'C A B', 'C A C', 'C A D', 'D A D', 'D A B',
+                   'D A C', 'E D A']
+
+        self.do_test(2, 3, proba_dict, answers)
 
 
 def main():
@@ -291,20 +284,32 @@ def main():
     generate_parser.add_argument('--size', required=True, type=int)
 
     test_parser = subparsers.add_parser('test')
-    test_parser.add_argument('--instruction', '-i', '-c')
 
-    args = parser.parse_args(input().split())
+    try:
+        args = parser.parse_args(input().split())
+    except Exception as e:
+        print(e.__class__)
 
     text = [line.strip() for line in sys.stdin]
 
     if args.command == 'tokenize':
-        do_tokenize(text)
+        pattern = default_pattern.replace(' ', '')
+        tokens = do_tokenize(text, pattern)
+        for token in tokens[0]:
+            print(token)
+
     if args.command == 'probabilities':
-        get_probabilities(text, args.depth)
+        pattern = '[' + letter + ']+'
+        tokens = do_tokenize(text, pattern)
+        proba_dict = get_probabilities(args.depth, tokens)
+        print_proba_dict(proba_dict)
+
     if args.command == 'generate':
-        generate(args.depth, args.size, text=text)
+        proba_dict = preparation(text, args.depth)
+        print(generate(args.depth, args.size, proba_dict))
+
     if args.command == 'test':
-        main_test(args.instruction)
+        unittest.main()
 
 if __name__ == '__main__':
     main()

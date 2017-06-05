@@ -118,7 +118,7 @@ def get_creature(mark, params):
     raise UnexpectedCreatureMark(mark)
 
 
-def get_creature_mark(creature):
+def get_mark(creature):
     if creature is None:
         return creature_marks['None']
     if isinstance(creature, Predator):
@@ -129,6 +129,21 @@ def get_creature_mark(creature):
         return creature_marks['Obstacle']
 
     raise UnexpectedCreatureType(creature)
+
+
+def print_legend():
+    print('legend:')
+    for creature_type, mark in sorted(creature_marks.items()):
+        print("{} - {}".format(mark, creature_type))
+    print()
+
+
+def get_creature_params(raw_params):
+    eat_rate = probability_array(raw_params[2])
+    return {'victim params': {'speed': probability_array(raw_params[1])},
+            'predator params': {'speed': probability_array(raw_params[0]),
+                                'eat_rate': eat_rate,
+                                'stamina': raw_params[3]}}
 
 
 def probability_array(p_0):
@@ -167,6 +182,27 @@ class Cell:
                 self.creature = None
 
 
+class OceanIter:
+    def __init__(self, ocean):
+        self.ocean = ocean
+        self.max_x = len(self.ocean.table)
+        self.max_y = len(self.ocean.table[0])
+        self.line = 0
+        self.column = -1
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.column += 1
+        if self.column == self.max_y:
+            self.line += 1
+            if self.line == self.max_x:
+                raise StopIteration
+            self.column = 0
+        return self.ocean.table[self.line][self.column]
+
+
 class Ocean:
     def __init__(self, start_table, params):
         """
@@ -175,7 +211,7 @@ class Ocean:
         predator_stamina
         """
 
-        creature_params = self.get_creature_params(params)
+        creature_params = get_creature_params(params)
         self.reproduction_periods = params[-2:]
         self.turns_till_reproduction = params[-2:]
         x_lim = len(start_table[0])
@@ -187,24 +223,15 @@ class Ocean:
             for mark, cell in zip(start_line, line):
                 cell.creature = get_creature(mark, creature_params)
 
-        for i in range(y_lim):
-            for j in range(x_lim):
-                potential_neighbors = [self.table[(i + 1) % y_lim][j],
-                                       self.table[(i - 1) % y_lim][j],
-                                       self.table[i][(j + 1) % x_lim],
-                                       self.table[i][(j - 1) % x_lim]]
-                self.table[i][j].neighbors = []
-                for potential_neighbor in potential_neighbors:
-                    if not isinstance(potential_neighbor.creature, Obstacle):
-                        self.table[i][j].neighbors.append(potential_neighbor)
+        for i in range(x_lim):
+            for j in range(y_lim):
+                self.table[i][j].neighbors = [self.table[(i + 1) % y_lim][j],
+                                              self.table[(i - 1) % y_lim][j],
+                                              self.table[i][(j + 1) % x_lim],
+                                              self.table[i][(j - 1) % x_lim]]
 
-    @staticmethod
-    def get_creature_params(raw_params):
-        eat_rate = probability_array(raw_params[2])
-        return {'victim params': {'speed': probability_array(raw_params[1])},
-                'predator params': {'speed': probability_array(raw_params[0]),
-                                    'eat_rate': eat_rate,
-                                    'stamina': raw_params[3]}}
+    def __iter__(self):
+        return OceanIter(self)
 
     def end_phase(self):
         for line in self.table:
@@ -218,9 +245,8 @@ class Ocean:
         Returns True is there are no victims or there are no predators
         in the ocean. If there are both types in the ocean returns None.
         """
-        for line in self.table:
-            for cell in line:
-                cell.start_turn()
+        for cell in self:
+            cell.start_turn()
         self.end_phase()
 
         creature_type = [Predator, Victim]
@@ -228,15 +254,13 @@ class Ocean:
             self.turns_till_reproduction[i] -= 1
             if self.turns_till_reproduction[i] == 0:
                 self.turns_till_reproduction[i] = period_len
-                for line in self.table:
-                    for cell in line:
-                        if isinstance(cell.creature, creature_type[i]):
-                            cell.creature.reproduction(cell.neighbors)
+                for cell in self:
+                    if isinstance(cell.creature, creature_type[i]):
+                        cell.creature.reproduction(cell.neighbors)
                 self.end_phase()
 
-        for line in self.table:
-            for cell in line:
-                cell.end_turn()
+        for cell in self:
+            cell.end_turn()
 
         if self.creatures_counter():
             return True
@@ -260,6 +284,7 @@ class Ocean:
                         victims_cnt += 1
                 if (not needstat) and victims_cnt and predators_cnt:
                     return False
+
         if needstat:
             return [predators_cnt, victims_cnt]
         else:
@@ -269,18 +294,9 @@ class Ocean:
         result = ""
         for line in self.table:
             for cell in line:
-                result += str(get_creature_mark(cell.creature)) + " "
+                result += str(get_mark(cell.creature)) + " "
             result += "\n"
         return result
-
-    @staticmethod
-    def print_legend():
-        print('legend:')
-        marks = ['.', 'v', 'p', 'X']
-        describtions = ['empty cell', 'victim', 'predator', 'obstacle']
-        for mark, describtion in zip(marks, describtions):
-            print("{} - {}".format(mark, describtion))
-        print()
 
 
 def init_ocean(file_name):
@@ -299,10 +315,10 @@ if __name__ == '__main__':
              ['p', 'X', '.', 'v'],
              ['X', 'v', '.', '.']]
     ocean = Ocean(table, params)
-    Ocean.print_legend()
+    print_legend()
 
     for i in range(20):
         print(ocean)
         if ocean.make_turn():
             break
-print(ocean)
+    print(ocean)

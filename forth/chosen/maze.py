@@ -7,7 +7,7 @@ import numpy
 import queue
 
 
-TRUE_DICT = {'flag': True}
+TRUE_DICT = {'can_move': True}
 
 
 class Cell:
@@ -26,7 +26,7 @@ class Exit(Cell):
         self.direction = direction
 
     def can_move(self, direction, game, player):
-        if direction == self.direction:
+        if direction[0] == self.direction:
             raise GameEnd()
         else:
             return TRUE_DICT
@@ -49,22 +49,32 @@ class Stun(Cell):
         if game.turn > stun_start + self.duration:
             return TRUE_DICT
         else:
-            return {'flag': False, 'message': STUNNED}
+            return {'can_move': False, 'message': STUNNED}
 
     def __str__(self):
         return 'S'
 
 
-DIRECTIONS = {'u': (-1, 0), 'r': (0, 1), 'l': (0, -1), 'd': (1, 0)}
-INV_DIR = {value: key for key, value in DIRECTIONS.items()}
-CELL_KEYS = {direction: Exit(direction) for direction in DIRECTIONS.keys()}
-CELL_KEYS['S'] = Stun()
-CELL_KEYS['.'] = Cell()
-PARSER = argparse.ArgumentParser()
-subparsers = PARSER.add_subparsers(dest='command')
-for direction in DIRECTIONS.keys():
-    subparsers.add_parser(direction)
+def make_cell_keys():
+    result = {direction: Exit(direction)
+              for direction in [d[0] for d in DIRECTIONS.keys()]}
+    result['S'] = Stun()
+    result['.'] = Cell()
+    return result
 
+
+def make_parser():
+    result = argparse.ArgumentParser()
+    subparsers = result.add_subparsers(dest='command')
+    for direction in DIRECTIONS.keys():
+        subparsers.add_parser(direction)
+    return result
+
+
+DIRECTIONS = {'up': (-1, 0), 'right': (0, 1), 'left': (0, -1), 'down': (1, 0)}
+INVERSED_DIRECTIONS = {value: key for key, value in DIRECTIONS.items()}
+CELL_KEYS = make_cell_keys()
+PARSER = make_parser()
 MOVE_SUCCESS = "You moved."
 WALL = "You can't move, there is a wall."
 STUNNED = "You stunned."
@@ -75,59 +85,66 @@ class MazeException(Exception):
         return "MazeException: " + self.describtion
 
 
-class GameEnd(MazeException):
-    def __init__(self):
-        self.describtion = "Game ended"
+class GameEnd(Exception):
+    pass
 
 
-class IncorrectInputFile(MazeException):
+class IncorrectInputFileError(MazeException):
     def __init__(self, name):
         self.describtion = "IncorrectInputFile: " + name
 
 
-class DifficultParams(MazeException):
+class DifficultParamsError(MazeException):
     def __init__(self, **kwargs):
         self.describtion = "Fail to generate correct field with params: "
         self.describtion += str(kwargs)
 
 
-class NoExit(MazeException):
+class NoExitError(MazeException):
     def __init__(self, player):
-        self.describtion = "There are no available exits for player: "
+        self.describtion = "There are no available exits for player "
         self.describtion += player.name
 
 
 class Game:
     def __init__(self, field_file, random_bots_number, smart_bots_number,
-                 alive_players_number):
+                 alive_players_number, silent=True):
+        self.silent = alive_players_number == 0 and silent
         self.field = Field(field_file)
         self.players = []
         for i in range(alive_players_number):
             print("Enter {} player name: ".format(i + 1), end='')
             self.players.append(AlivePlayer(input().split('\n')[0]))
 
-        self.players += [SmartBot() for _ in range(smart_bots_number)]
-        self.players += [RandomBot() for _ in range(random_bots_number)]
+        self.players += [SmartBot(self.silent)
+                         for _ in range(smart_bots_number)]
+        self.players += [RandomBot(self.silent)
+                         for _ in range(random_bots_number)]
         random.shuffle(self.players)
         self.turn = 1
+
+    def game_print(self, *args, **kwargs):
+        if not self.silent:
+            print(*args, **kwargs)
 
     def inform(self, active, message):
         for player in self.players:
             player.finish_turn(active, message)
 
     def move(self, player, direction):
-        old_pos = self.positions[player.name]
-        can_move = self.field.can_move(old_pos, direction, self, player)
-        if can_move['flag']:
-            self.positions[player.name] = get_new_pos(old_pos, direction)
+        old_position = self.positions[player.name]
+        can_move = self.field.can_move(old_position, direction, self, player)
+        if can_move['can_move']:
+            new_position = get_new_position(old_position, direction)
+            self.positions[player.name] = new_position
             self.field[self.positions[player.name]].arrive(self, player)
         self.inform(player, can_move['message'])
 
-    def exec_correct_command(self, command, player):
+    def execute_correct_command(self, command, player):
         """
-        Executes command and returns True if command is correct.
+        Will execute command and return True if command is correct.
 
-        Overwise returns False
+        Overwise returns False.
         """
         try:
             args = PARSER.parse_args(command.split())
@@ -140,22 +157,22 @@ class Game:
 
     def choose_start(self):
         size = self.field.size - 1
-        print("All player should choose their start positions.\n" +
-              "You should type two numbers from [0, {}]".format(size) +
-              " to set this position like this: '0 0'.")
+        self.game_print("All player should choose their start positions.\n" +
+                        "You should type two numbers from " +
+                        "[0, {}]".format(size) +
+                        " to set this position like this: '0 0'.")
         self.positions = {player.name: player.choose_start(self.field.size)
                           for player in self.players}
 
     def make_turn(self):
-        print("Begin turn {}.".format(self.turn))
+        self.game_print("Begin turn {}.".format(self.turn))
 
         for player in self.players:
-            print(player.name + " turn.")
-            print(self.positions[player.name])
+            self.game_print(player.name + " turn.")
             try:
                 player.turn(self)
             except GameEnd as error:
-                print("Player " + player.name + " win!")
+                self.game_print("Player " + player.name + " win!")
                 self.winner = player
                 raise error
 
@@ -168,13 +185,13 @@ class Game:
                  "Rules are pretty simple.\n" +
                  "Your goal is to get out of here.\n" +
                  "There are exits (at least one) somewhere in Maze.\n" +
-                 "No one knows where exactly are they, but they should be" +
+                 "No one knows where exactly are they, but they should be " +
                  "somewhere in walls, which surround the Maze.\n" +
                  "If you move in right direction from exit cell you'll " +
                  "win!\n" +
                  "Type " + ", ".join(DIRECTIONS.keys()) + " to move in " +
                  "respective way.\nGood luck!\n")
-        print(rules)
+        self.game_print(rules)
 
     def play_game(self, turn_limit=None):
         """
@@ -184,12 +201,12 @@ class Game:
         """
         self.print_rules()
         self.choose_start()
-        print("\nAnd the game begins!\n")
+        self.game_print("\nAnd the game begins!\n")
         try:
             while turn_limit is None or self.turn <= turn_limit:
                 self.make_turn()
-            print("Game over! Time out.")
-        except(GameEnd):
+            self.game_print("Game over! Time out.")
+        except GameEnd:
             return self.winner
 
 
@@ -216,22 +233,24 @@ class Field:
                         for j in range(self.size):
                             self.field[i][j] = CELL_KEYS[line[2 * j]]
                             if j != self.size - 1:
-                                self.vwalls[i][j] = line[2*j + 1] == "|"
+                                wall = line[2*j + 1] == "|"
+                                self.vertical_walls[i][j] = wall
 
                         if i != self.size - 1:
                             line = file.readline()
                             for j in range(self.size):
-                                self.hwalls[i][j] = line[2 * j] == "-"
-            except Exception:
-                raise IncorrectInputFile(file_name)
+                                wall = line[2 * j] == "-"
+                                self.horizontal_walls[i][j] = wall
+            except (ValueError, LookupError, FileNotFoundError):
+                raise IncorrectInputFileError(file_name)
 
     def _set_default_field(self):
         self.field = [[Cell() for j in range(self.size)]
                       for i in range(self.size)]
-        self.hwalls = [[False for i in range(self.size)]
-                       for j in range(self.size - 1)]
-        self.vwalls = [[False for i in range(self.size - 1)]
-                       for j in range(self.size)]
+        self.horizontal_walls = [[False for i in range(self.size)]
+                                 for j in range(self.size - 1)]
+        self.vertical_walls = [[False for i in range(self.size - 1)]
+                               for j in range(self.size)]
 
     def __getitem__(self, position):
         return self.field[position[0]][position[1]]
@@ -245,24 +264,25 @@ class Field:
         else:
             result = self[position].can_move(direction, game, player)
 
-        if result['flag']:
+        if result['can_move']:
             if check_valid(self.size, position, direction):
                 if DIRECTIONS[direction][1]:
                     new_cord = position[1] + min(DIRECTIONS[direction][1], 0)
-                    wall = self.vwalls[position[0]][new_cord]
+                    wall = self.vertical_walls[position[0]][new_cord]
                 else:
                     new_cord = position[0] + min(DIRECTIONS[direction][0], 0)
-                    wall = self.hwalls[new_cord][position[1]]
+                    wall = self.horizontal_walls[new_cord][position[1]]
             else:
                 wall = True
             result = {'message': WALL if wall else MOVE_SUCCESS,
-                      'flag': not wall}
+                      'can_move': not wall}
         return result
 
     def __str__(self):
         result = ""
-        for i, (hw, line) in enumerate(zip(self.hwalls + [[[]]], self.field)):
-            for wall, cell in zip(self.vwalls[i] + [[]], line):
+        for i, (hw, line) in enumerate(zip(self.horizontal_walls + [[[]]],
+                                           self.field)):
+            for wall, cell in zip(self.vertical_walls[i] + [[]], line):
                 result += str(cell)
                 result += '|' if wall else ' '
             result += '\n'
@@ -287,7 +307,7 @@ class RandomPriorityQueue(queue.PriorityQueue):
     def put(self, element):
         try:
             priority, value = element
-        except Exception:
+        except (ValueError, TypeError):
             raise ValueError('Incorrect elemnet for RandomPriorityQueue.' +
                              ' Expect pair (priority, value)') from None
 
@@ -298,7 +318,7 @@ class RandomPriorityQueue(queue.PriorityQueue):
     def get(self):
         priority, random_key = super().get(False)
         value = self.values.pop(random_key)
-        return (priority, value)
+        return priority, value
 
 
 def get_position():
@@ -308,14 +328,16 @@ def get_position():
         return (-1, -1)
 
 
-def get_new_pos(position, direction):
+def get_new_position(position, direction):
     return tuple(pos + add
                  for pos, add in zip(position, DIRECTIONS[direction]))
 
 
-def get_move_direction(position, prev_position):
-    direction = tuple(pos - prev for pos, prev in zip(position, prev_position))
-    return INV_DIR[direction]
+def get_move_direction(position, previous_position):
+    direction = tuple(pos - previous_pos
+                      for pos, previous_pos
+                      in zip(position, previous_position))
+    return INVERSED_DIRECTIONS[direction]
 
 
 def in_range(num, begin, end=None):
@@ -336,7 +358,7 @@ def check_valid(size, position, direction=None):
         return False
 
     if direction is not None:
-        position = get_new_pos(position, direction)
+        position = get_new_position(position, direction)
     return in_range(position[0], size) and in_range(position[1], size)
 
 
@@ -345,17 +367,17 @@ def build_route(node, nodes):
     while nodes[path[-1]]['ancestor'] is not None:
         path.append(nodes[path[-1]]['ancestor'])
     path = list(reversed(path))
-    return [get_move_direction(node, prev_node)
-            for node, prev_node in zip(path[1:], path)]
+    return [get_move_direction(node, previous_node)
+            for node, previous_node in zip(path[1:], path)]
 
 
-def set_walls(hwalls, vwalls, position, direction):
+def set_walls(horizontal_walls, vertical_walls, position, direction):
     if DIRECTIONS[direction][1]:
         new_cord = position[1] + min(DIRECTIONS[direction][1], 0)
-        vwalls[position[0]][new_cord] = True
+        vertical_walls[position[0]][new_cord] = True
     else:
         new_cord = position[0] + min(DIRECTIONS[direction][0], 0)
-        hwalls[new_cord][position[1]] = True
+        horizontal_walls[new_cord][position[1]] = True
 
 
 def multinomial_rvs(probs_dict):
@@ -391,10 +413,6 @@ class Player:
     def __init__(self, name):
         self.name = name
 
-    def finish_turn(self, active, message):
-        if self == active:
-            print(message)
-
 
 class AlivePlayer(Player):
     def choose_start(self, size):
@@ -410,24 +428,34 @@ class AlivePlayer(Player):
         return start
 
     def turn(self, game):
-        while not game.exec_correct_command(input(), self):
+        while not game.execute_correct_command(input(), self):
             pass
+
+    def finish_turn(self, active, message):
+        if self == active:
+            print(message)
 
 
 class Bot(Player):
-    def __init__(self, name=None):
+    def __init__(self, silent, name=None):
         if name is None:
             letters = random.sample(string.ascii_lowercase, 5)
             name = "".join(letters).capitalize()
         self.name = name
+        self.silent = silent
 
     def choose_start(self):
-        print(self.name + " chose.")
+        if not self.silent:
+            print(self.name + " chose.")
+
+    def finish_turn(self, active, message):
+        if not self.silent and self == active:
+            print(message)
 
 
 class RandomBot(Bot):
-    def __init__(self, name=None):
-        super().__init__(name)
+    def __init__(self, silent, name=None):
+        super().__init__(silent, name)
         self.possible_commands = list(DIRECTIONS.keys())
 
     def choose_start(self, size):
@@ -436,12 +464,13 @@ class RandomBot(Bot):
         return self.start
 
     def turn(self, game):
-        game.exec_correct_command(random.choice(self.possible_commands), self)
+        game.execute_correct_command(random.choice(self.possible_commands),
+                                     self)
 
 
 class SmartBot(Bot):
-    def __init__(self, name=None):
-        super().__init__(name)
+    def __init__(self, silent, name=None):
+        super().__init__(silent, name)
         self.route = []
 
     def choose_start(self, size):
@@ -466,8 +495,8 @@ class SmartBot(Bot):
                 return build_route(cur_node, nodes)
             else:
                 for direction in DIRECTIONS.keys():
-                    new_pos = get_new_pos(cur_node, direction)
-                    if (self.field.can_move(cur_node, direction)['flag']):
+                    new_pos = get_new_position(cur_node, direction)
+                    if (self.field.can_move(cur_node, direction)['can_move']):
                         if isinstance(self.field[new_pos], Stun):
                             edge = self.field[new_pos].duration + 1
                         else:
@@ -478,7 +507,7 @@ class SmartBot(Bot):
                             nodes[new_pos] = {'distance': new_distance,
                                               'ancestor': cur_node}
                             priority_queue.put((new_distance, new_pos))
-        raise NoExit(self)
+        raise NoExitError(self)
 
     def turn(self, game):
         if len(self.route) == 0:
@@ -487,7 +516,7 @@ class SmartBot(Bot):
                 return
             self.route = self.get_route(self.position)
         self.direction = self.route.pop(0)
-        game.exec_correct_command(self.direction, self)
+        game.execute_correct_command(self.direction, self)
 
     def finish_turn(self, active, message):
         if active == self:
@@ -508,27 +537,28 @@ class SmartBot(Bot):
             if message == WALL:
                 if check_valid(self.maze_size, self.position, self.direction):
                     self.route = []
-                    set_walls(self.field.hwalls, self.field.vwalls,
+                    set_walls(self.field.horizontal_walls,
+                              self.field.vertical_walls,
                               self.position, self.direction)
                 else:
                     if len(self.potential_exits[self.position]) == 0:
                         self.potential_exits.pop(self.position)
 
             if message == MOVE_SUCCESS:
-                self.position = get_new_pos(self.position, self.direction)
+                self.position = get_new_position(self.position, self.direction)
             self.direction = None
 
         super().finish_turn(active, message)
 
     def try_to_exit(self, game):
         self.direction = self.potential_exits[self.position].pop()
-        game.exec_correct_command(self.direction, self)
+        game.execute_correct_command(self.direction, self)
 
 
-def normalize_probs_dict(probs_dict):
-    summary = sum(probs_dict.values())
-    for key in probs_dict.keys():
-        probs_dict[key] /= summary
+def normalize_probabilities_dict(probabilities_dict):
+    summary = sum(probabilities_dict.values())
+    for key in probabilities_dict.keys():
+        probabilities_dict[key] /= summary
 
 
 def check_field(file_name):
@@ -544,10 +574,10 @@ def check_field(file_name):
     while len(queue) != 0:
         cur_node = queue.pop(0)
         for direction in DIRECTIONS.keys():
-            new_node = get_new_pos(cur_node, direction)
+            new_node = get_new_position(cur_node, direction)
             if (check_valid(field.size, cur_node, direction) and
                     nodes[new_node] and
-                    field.can_move(cur_node, direction)['flag']):
+                    field.can_move(cur_node, direction)['can_move']):
                 nodes[new_node] = False
                 queue.append(new_node)
 
@@ -562,12 +592,14 @@ def print_wall(file, wall_symbol, wall_prob):
     print(file=file, end=wall_symbol if wall else ' ')
 
 
-def generate_field(file_name, size, wall_prob, cell_probs, exits_number=1):
-    normalize_probs_dict(cell_probs)
+def generate_field(file_name, size, wall_probability, cell_probabilities,
+                   exits_number=1):
+    normalize_probabilities_dict(cell_probabilities)
 
     potential_exits = get_potential_exits(size)
     exits = choice(potential_exits.keys(), exits_number)
-    exits = {(i, j): random.choice(potential_exits[(i, j)]) for i, j in exits}
+    exits = {(i, j): random.choice(potential_exits[(i, j)])[0]
+             for i, j in exits}
 
     with open(file_name, 'w') as file:
         print(size, file=file)
@@ -576,13 +608,14 @@ def generate_field(file_name, size, wall_prob, cell_probs, exits_number=1):
                 if (line, column) in exits.keys():
                     print(exits[(line, column)], file=file, end='')
                 else:
-                    print(multinomial_rvs(cell_probs), file=file, end='')
+                    print(multinomial_rvs(cell_probabilities),
+                          file=file, end='')
                 if column != size - 1:
-                    print_wall(file, '|', wall_prob)
+                    print_wall(file, '|', wall_probability)
             print(file=file)
             if line != size - 1:
                 for column in range(size):
-                    print_wall(file, '-', wall_prob)
+                    print_wall(file, '-', wall_probability)
                     if column != size - 1:
                         print(file=file, end=' ')
                 print(file=file)
@@ -593,24 +626,24 @@ def generate_correct_field(tries_nubmer, **kwargs):
         generate_field(**kwargs)
         if check_field(kwargs['file_name']):
             return
-    raise DifficultParams(**kwargs)
+    raise DifficultParamsError(**kwargs)
 
 
 def main():
-    games_number = 1000
+    games_number = 1
     players = {'random_bots_number': 1,
-               'smart_bots_number': 1,
-               'alive_players_number': 0}
-    field_name = 'field5.txt'
+               'smart_bots_number': 0,
+               'alive_players_number': 1}
+    field_name = 'field2.txt'
     field_args = {'file_name': field_name,
                   'size': 10,
-                  'wall_prob': 0.3,
-                  'cell_probs': {'.': 0.9, 'S': 0.1},
+                  'wall_probability': 0.3,
+                  'cell_probabilities': {'.': 0.9, 'S': 0.1},
                   'exits_number': 2}
 
     smart_wins = 0
     for i in range(games_number):
-        generate_correct_field(100, **field_args)
+    #    generate_correct_field(100, **field_args)
         game = Game(field_name, **players)
         if isinstance(game.play_game(), SmartBot):
             smart_wins += 1

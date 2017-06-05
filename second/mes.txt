@@ -1,0 +1,7 @@
+        eat_rate = probability_array(raw_params[2])
+        return {'victim params': {'speed': probability_array(raw_params[1])},
+                'predator params': {'speed': probability_array(raw_params[0]),
+                                    'eat_rate': eat_rate,
+                                    'stamina': raw_params[3]}}
+
+

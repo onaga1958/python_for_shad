@@ -113,8 +113,8 @@ def main():
             'http://lib.ru/RUFANT/BELAEW/oko.txt']
 
     valid_begins = ['"Окаянный', 'Посвящаю', 'Авт', 'Констан', 'Большой',
-                   'Снежная', 'Огромный', '- Не брызгайте', 'Наступила',
-                   '- Жан', 'Книга']
+                    'Снежная', 'Огромный', '- Не брызгайте', 'Наступила',
+                    '- Жан', 'Книга']
     texts = []
     for url, begin in zip(urls, valid_begins):
         html = url_to_file(url, begin)
@@ -131,5 +131,5 @@ def main():
         for text in texts:
             print(text, file=f)
 
-if __name__ == '__main__':
-    main()
+# if __name__ == '__main__':
+#     main()
